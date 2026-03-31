@@ -53,7 +53,7 @@ def seed_db():
                     a = Asset(
                         ticker=ticker, asset_name=name, type_id=db_types[atype].type_id,
                         currency=curr, annual_volatility=vol, annual_return=ret, 
-                        base_price=100.0, type_disc=atype
+                        base_price=100.0
                     )
                     db.add(a)
                     db.flush()
@@ -121,7 +121,7 @@ def seed_db():
                     assets_payload = []
                     for pa in p.assets:
                         assets_payload.append({
-                            'asset_type': pa.asset.type_disc,
+                            'asset_type': pa.asset.asset_type.type_name,
                             'weight': pa.weight,
                             'quantity': pa.quantity,
                             'base_price': pa.asset.base_price,

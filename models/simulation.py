@@ -7,7 +7,7 @@ class Scenario(Base):
     __tablename__ = "scenario"
 
     scenario_id = Column(Integer, primary_key=True, index=True)
-    created_by = Column(Integer, ForeignKey("user.user_id"))
+    created_by = Column(Integer, ForeignKey("users.user_id"))
     name = Column(String, unique=True, nullable=False)
     description = Column(String)
     interest_rate_shock_bps = Column(Integer, nullable=False)
@@ -24,18 +24,18 @@ class SimulationRun(Base):
     __tablename__ = "simulation_run"
 
     run_id = Column(Integer, primary_key=True, index=True)
-    portfolio_id = Column(Integer, ForeignKey("portfolio.portfolio_id"), nullable=False, index=True) 
-    scenario_id = Column(Integer, ForeignKey("scenario.scenario_id"), nullable=False, index=True)  
-    initiated_by = Column(Integer, ForeignKey("user.user_id"))
+    portfolio_id = Column(Integer, ForeignKey("portfolio.portfolio_id"), nullable=False)
+    scenario_id = Column(Integer, ForeignKey("scenario.scenario_id"), nullable=False)
+    initiated_by = Column(Integer, ForeignKey("users.user_id"))
     run_type = Column(String, nullable=False, default="monte_carlo")
     status = Column(String, nullable=False, default="pending")
     num_simulations = Column(Integer, nullable=False, default=10000)
     started_at = Column(DateTime, default=func.now())
     completed_at = Column(DateTime, nullable=True)
-    execution_time_ms = Column(Float, nullable=True)
-    
-    random_seed = Column(Integer, nullable=False, default=42)
-    time_horizon_days = Column(Integer, nullable=False, default=252)
+    execution_time_ms = Column(Float)
+    random_seed = Column(Integer, nullable=False)
+    time_horizon_days = Column(Integer, nullable=False)
+    run_timestamp = Column(DateTime, nullable=False, default=func.now())
 
     portfolio = relationship("Portfolio", back_populates="simulation_runs")
     scenario = relationship("Scenario", back_populates="simulation_runs")

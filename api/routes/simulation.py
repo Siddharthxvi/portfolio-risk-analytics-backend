@@ -22,7 +22,7 @@ def run_simulation(req: SimulationRunCreate, db: Session = Depends(get_db)):
     assets_payload = []
     for pa in port.assets:
         assets_payload.append({
-            'asset_type': pa.asset.type_disc,
+            'asset_type': pa.asset.asset_type.type_name,
             'weight': pa.weight,
             'quantity': pa.quantity,
             'base_price': pa.asset.base_price,

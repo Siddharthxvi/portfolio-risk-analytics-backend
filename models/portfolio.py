@@ -7,7 +7,7 @@ class Portfolio(Base):
     __tablename__ = "portfolio"
 
     portfolio_id = Column(Integer, primary_key=True, index=True)
-    owner_id = Column(Integer, ForeignKey("user.user_id"))
+    owner_id = Column(Integer, ForeignKey("users.user_id"))
     name = Column(String, nullable=False)
     description = Column(String)
     base_currency = Column(String)

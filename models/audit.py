@@ -8,7 +8,7 @@ class Report(Base):
 
     report_id = Column(Integer, primary_key=True, index=True)
     run_id = Column(Integer, ForeignKey("simulation_run.run_id"))
-    generated_by = Column(Integer, ForeignKey("user.user_id"))
+    generated_by = Column(Integer, ForeignKey("users.user_id"))
     title = Column(String)
     generated_at = Column(DateTime, default=func.now())
     format = Column(String)
@@ -22,7 +22,7 @@ class AuditLog(Base):
     __tablename__ = "audit_log"
 
     log_id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("user.user_id"))
+    user_id = Column(Integer, ForeignKey("users.user_id"))
     entity_type = Column(String)
     entity_id = Column(Integer)
     operation = Column(String)

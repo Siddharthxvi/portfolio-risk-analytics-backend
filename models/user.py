@@ -1,16 +1,16 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database import Base
 
 class User(Base):
-    __tablename__ = "user"
+    __tablename__ = "users"
 
     user_id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, nullable=False)
-    email = Column(String, unique=True, nullable=False)
-    password_hash = Column(String, nullable=False)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
+    username = Column(String(100), unique=True, nullable=False)
+    email = Column(String(100), unique=True, nullable=False)
+    password_hash = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=func.now())
     is_active = Column(Boolean, default=True)
 
     profile = relationship("UserProfile", back_populates="user", uselist=False)
@@ -26,12 +26,12 @@ class UserProfile(Base):
     __tablename__ = "user_profile"
 
     profile_id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("user.user_id"), unique=True, nullable=False)
-    full_name = Column(String)
-    phone = Column(String)
-    department = Column(String)
-    bio = Column(String)
-    avatar_url = Column(String)
+    user_id = Column(Integer, ForeignKey("users.user_id"), unique=True)
+    full_name = Column(String(100))
+    phone = Column(String(20))
+    department = Column(String(100))
+    bio = Column(Text)
+    avatar_url = Column(Text)
 
     user = relationship("User", back_populates="profile")
 
@@ -40,7 +40,7 @@ class Role(Base):
     __tablename__ = "role"
 
     role_id = Column(Integer, primary_key=True, index=True)
-    role_name = Column(String, nullable=False)
+    role_name = Column(String(50))
     can_read = Column(Boolean, default=True)
     can_write = Column(Boolean, default=False)
     can_create = Column(Boolean, default=False)
@@ -52,10 +52,10 @@ class Role(Base):
 class UserRole(Base):
     __tablename__ = "user_role"
 
-    user_id = Column(Integer, ForeignKey("user.user_id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), primary_key=True)
     role_id = Column(Integer, ForeignKey("role.role_id"), primary_key=True)
-    assigned_at = Column(Date, default=func.current_date())
-    assigned_by = Column(Integer, ForeignKey("user.user_id"))
+    assigned_at = Column(Date)
+    assigned_by = Column(Integer, ForeignKey("users.user_id"))
 
     user = relationship("User", foreign_keys=[user_id], back_populates="roles")
     role = relationship("Role", back_populates="users")

@@ -20,8 +20,7 @@ def create_asset(asset: AssetCreate, db: Session = Depends(get_db)):
         currency=asset.currency,
         base_price=asset.base_price,
         annual_volatility=asset.annual_volatility,
-        annual_return=asset.annual_return,
-        type_disc=asset.type_name
+        annual_return=asset.annual_return
     )
     db.add(db_asset)
     db.commit()
