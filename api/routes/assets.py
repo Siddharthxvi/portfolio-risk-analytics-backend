@@ -5,7 +5,7 @@ from typing import List
 from core.database import get_db
 from core.auth import require_role
 from models.asset import Asset
-from schemas.asset import AssetCreate, AssetResponse
+from schemas.asset import AssetCreate, AssetResponse, AssetUpdate
 
 router = APIRouter()
 
@@ -40,6 +40,21 @@ def create_asset(asset: AssetCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_asset)
     return db_asset
+
+
+@router.put("/{asset_id}", response_model=AssetResponse, dependencies=[WriteAccess])
+def update_asset(asset_id: int, asset_in: AssetUpdate, db: Session = Depends(get_db)):
+    asset = db.query(Asset).filter(Asset.asset_id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    update_data = asset_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(asset, field, value)
+
+    db.commit()
+    db.refresh(asset)
+    return asset
 
 
 @router.delete("/{asset_id}", dependencies=[WriteAccess])

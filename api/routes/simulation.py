@@ -11,6 +11,7 @@ from models.user_settings import UserSettings
 from schemas.simulation import (
     SimulationRunCreate, 
     SimulationRunResponse, 
+    SimulationRunUpdate,
     AdHocSimulationRequest, 
     AdHocSimulationResponse, 
     HistogramResponse
@@ -87,6 +88,29 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
+
+@router.put("/{run_id}", response_model=SimulationRunResponse, dependencies=[WriteAccess])
+def update_run(run_id: int, req: SimulationRunUpdate, db: Session = Depends(get_db)):
+    run = db.query(SimulationRun).filter(SimulationRun.run_id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    update_data = req.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(run, field, value)
+
+    db.commit()
+    db.refresh(run)
+    return run
+
+@router.delete("/{run_id}", dependencies=[WriteAccess])
+def delete_run(run_id: int, db: Session = Depends(get_db)):
+    run = db.query(SimulationRun).filter(SimulationRun.run_id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    db.delete(run)
+    db.commit()
+    return {"detail": "Simulation Run deleted"}
 
 
 @router.get("/{run_id}/distribution", response_model=HistogramResponse, dependencies=[ReadAccess])

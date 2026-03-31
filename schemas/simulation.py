@@ -26,6 +26,14 @@ class SimulationRunCreate(BaseModel):
             raise ValueError('Time horizon must be 1, 10, or 252')
         return v
 
+class SimulationRunUpdate(BaseModel):
+    num_simulations: Optional[int] = Field(None, ge=1000, le=10000)
+    time_horizon_days: Optional[int] = Field(None)
+    random_seed: Optional[int] = None
+    simulation_type: Optional[Literal['monte_carlo', 'historical', 'parametric']] = None
+    confidence_level: Optional[Literal[0.90, 0.95, 0.99]] = None
+    status: str = "pending"
+
 class HistogramResponse(BaseModel):
     bin_edges: List[float]
     counts: List[int]
