@@ -24,6 +24,40 @@ import models
 def read_root():
     return {"message": "Welcome to the Portfolio Risk Analytics API"}
 
+@app.get("/bootstrap-users")
+def bootstrap_users(db: Session = Depends(get_db)):
+    """Creates the 3 default users required to login and test the platform."""
+    from scripts.seed_users import TEST_USERS
+    from core.auth import hash_password
+    from models.user import User, UserProfile
+    
+    results = []
+    try:
+        for u_data in TEST_USERS:
+            existing = db.query(User).filter(User.username == u_data["username"]).first()
+            if existing:
+                results.append(f"User '{u_data['username']}' already exists.")
+                continue
+
+            user = User(
+                username=u_data["username"],
+                email=u_data["email"],
+                password_hash=hash_password(u_data["password"]),
+                is_active=True,
+            )
+            db.add(user)
+            db.flush()
+
+            profile = UserProfile(user_id=user.user_id, full_name=u_data["name"])
+            db.add(profile)
+            results.append(f"Created: {u_data['username']}")
+            
+        db.commit()
+        return {"status": "success", "actions": results, "passwords": "Password123!"}
+    except Exception as e:
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
     try:

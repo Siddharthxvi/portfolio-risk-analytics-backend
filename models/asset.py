@@ -35,7 +35,7 @@ class Asset(Base):
 
     equity_details = relationship("Equity", back_populates="core_asset", uselist=False)
     bond_details = relationship("Bond", back_populates="core_asset", uselist=False)
-    derivative_details = relationship("Derivative", back_populates="core_asset", uselist=False)
+    derivative_details = relationship("Derivative", foreign_keys="[Derivative.asset_id]", back_populates="core_asset", uselist=False)
 
 class Equity(Base):
     __tablename__ = "equity"
