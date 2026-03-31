@@ -24,6 +24,14 @@ class PortfolioBase(BaseModel):
 class PortfolioCreate(PortfolioBase):
     assets: List[PortfolioAssetCreate] = []
 
+class PortfolioUpdate(BaseModel):
+    """Update portfolio metadata and/or replace its asset allocation."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    base_currency: Optional[str] = None
+    status: Optional[str] = None
+    assets: Optional[List[PortfolioAssetCreate]] = None  # if provided, replaces all assets
+
 class PortfolioResponse(PortfolioBase):
     portfolio_id: int
     assets: List[PortfolioAssetResponse] = []

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime
 
 class RiskMetricResponse(BaseModel):
@@ -16,6 +16,8 @@ class SimulationRunCreate(BaseModel):
     num_simulations: int = Field(default=10000, ge=1000, le=100000)
     time_horizon_days: int = Field(default=252)
     random_seed: int = Field(default=42)
+    simulation_type: Literal['monte_carlo', 'historical', 'parametric'] = 'monte_carlo'
+    confidence_level: Literal[0.90, 0.95, 0.99] = 0.95
 
     @field_validator('time_horizon_days')
     @classmethod
@@ -29,10 +31,11 @@ class SimulationRunResponse(BaseModel):
     portfolio_id: int
     scenario_id: int
     status: str
-    started_at: datetime
+    run_type: str
+    started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     risk_metrics: List[RiskMetricResponse] = []
-    
+
     class Config:
         from_attributes = True
 
@@ -55,9 +58,11 @@ class ScenarioInput(BaseModel):
 class AdHocSimulationRequest(BaseModel):
     portfolio_assets: List[AssetInput]
     scenario: ScenarioInput
-    num_iterations: int = Field(ge=1000, le=100000, description="Number of independent MC paths")
-    time_horizon_days: int = Field(description="Between 1 and 252 (inclusive) trading days")
-    random_seed: int = Field(description="Numpy RNG seed for reproducibility")
+    num_iterations: int = Field(default=10000, ge=1000, le=100000, description="Number of independent MC paths")
+    time_horizon_days: int = Field(default=252, description="Between 1 and 252 (inclusive) trading days")
+    random_seed: int = Field(default=42, description="Numpy RNG seed for reproducibility")
+    simulation_type: Literal['monte_carlo', 'historical', 'parametric'] = 'monte_carlo'
+    confidence_level: Literal[0.90, 0.95, 0.99] = 0.95
 
     @field_validator('time_horizon_days')
     @classmethod

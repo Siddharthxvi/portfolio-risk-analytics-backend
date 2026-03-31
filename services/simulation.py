@@ -1,99 +1,148 @@
 import numpy as np
+from typing import List, Dict
 
-def run_monte_carlo(assets, scenario, num_iterations: int, time_horizon_days: int, random_seed: int):
-    """
-    Executes the Monte Carlo risk simulation.
-
-    :param assets: List of dicts with keys: 'asset_type', 'weight', 'base_price', 'quantity', 'annual_volatility', 'annual_return'
-    :param scenario: Dict with keys: 'interest_rate_shock_bps', 'volatility_multiplier', 'equity_shock_pct'
-    :param num_iterations: Integer (e.g., 10000)
-    :param time_horizon_days: Integer (1, 10, 252)
-    :param random_seed: Integer
-    :return: dict of the 5 computed metrics
-    """
+# ── Monte Carlo (GBM) ─────────────────────────────────────────────────────────
+def _run_gbm(assets, scenario, num_iterations: int, time_horizon_days: int, random_seed: int) -> np.ndarray:
+    """Geometric Brownian Motion — the default simulation engine."""
     np.random.seed(random_seed)
-
-    # We are simulating 'time_horizon_days' days worth of returns. 
-    # The prompt actually asks to scale daily returns by time_horizon... or does it?
-    # "Draw num_iterations random return samples for each asset from a normal distribution N(μ_daily, σ_daily)"
-    # Wait, the spec says time_horizon_days but only gives formulas for daily scaling.
-    # Actually, if time_horizon is T days, the path is normally sum of T daily returns. 
-    # For a simple 1-step Brownian motion covering T days: 
-    # expected return = μ_daily * T
-    # volatility = σ_daily * sqrt(T)
-    
-    total_portfolio_value = 0.0
-    
-    # Store path returns per asset: shape (num_assets, num_iterations)
-    asset_returns = np.zeros((len(assets), num_iterations))
     asset_values = np.zeros(len(assets))
-    
+    asset_returns = np.zeros((len(assets), num_iterations))
+
     for j, asset in enumerate(assets):
-        # 1. Apply scenario adjustments
         eff_vol = asset['annual_volatility'] * scenario['volatility_multiplier']
         eff_ret = asset['annual_return']
-        
-        # Determine strict type string (assuming 'equity', 'bond', etc. in 'type_name' or 'type_disc')
+
         atype = asset.get('asset_type', '').lower()
         if 'equity' in atype:
             eff_ret += scenario['equity_shock_pct']
         elif 'bond' in atype:
-            eff_ret -= (scenario['interest_rate_shock_bps'] / 10000.0)
-            
-        # 2. Daily scaling
-        mu_daily = eff_ret / 252.0
-        sigma_daily = eff_vol / np.sqrt(252.0)
-        
-        # Adjust for time horizon
-        mu_horizon = mu_daily * time_horizon_days
-        sigma_horizon = sigma_daily * np.sqrt(time_horizon_days)
-        
-        # Generate Returns N(μ, σ)
-        returns = np.random.normal(mu_horizon, sigma_horizon, num_iterations)
-        
-        # 3. Compute Value
-        val = asset['base_price'] * asset['quantity']
-        # The prompt says: "P&L[i] = Σ (weight[j] × base_price[j] × quantity[j] × return[i][j])"
-        # Wait, weight * value? If you multiply weight again, it double counts the distribution of value if weight is a fraction!
-        # Re-reading prompt: "weight[j] × base_price[j] × quantity[j] × return[i][j]"
-        # If the TA literally wants this formula, I will follow it.
-        # But wait, usually P&L of asset j is exactly `val * return`. 
-        # But let's follow the literal formula:
-        asset_values[j] = asset['weight'] * val
-        asset_returns[j] = returns
+            eff_ret -= scenario['interest_rate_shock_bps'] / 10000.0
 
-        # compute standard total value for volatility division
-        # Is it sum of base_price * quantity?
-        total_portfolio_value += val
-        
-    # P&L matrix computation
-    # P&L[i] = sum over j of (asset_values[j] * asset_returns[j][i])
-    # This is exactly dot product
-    pnl = np.dot(asset_values, asset_returns)
-    
-    # 4. Compute Metrics
-    pnl_sorted = np.sort(pnl) # ascending: worst losses first
-    
-    idx_5 = int(num_iterations * 0.05)
-    idx_1 = int(num_iterations * 0.01)
-    
-    var_95 = -pnl_sorted[idx_5]
-    var_99 = -pnl_sorted[idx_1]
-    es_95 = -np.mean(pnl_sorted[:idx_5]) # mean of losses below 5th percentile
-    
-    # Volatility = standard deviation of P&L distribution / portfolio total value
-    # Wait, if total_portfolio_value was used, it'd just be std / total.
-    # What if the portfolio is completely defined by the sum of asset_values? 
-    # Let's use sum of asset_values (incorporating weight as per the equation) to be consistent.
-    sum_asset_values = np.sum(asset_values)
-    volatility = np.std(pnl) / sum_asset_values if sum_asset_values > 0 else 0.0
-    
-    max_drawdown = -np.min(pnl)
-    
+        mu_horizon    = (eff_ret / 252.0) * time_horizon_days
+        sigma_horizon = (eff_vol / np.sqrt(252.0)) * np.sqrt(time_horizon_days)
+
+        asset_values[j]  = asset['weight'] * asset['base_price'] * asset['quantity']
+        asset_returns[j] = np.random.normal(mu_horizon, sigma_horizon, num_iterations)
+
+    return np.dot(asset_values, asset_returns)
+
+
+# ── Historical Bootstrap ──────────────────────────────────────────────────────
+def _run_historical_bootstrap(assets, scenario, num_iterations: int, time_horizon_days: int, random_seed: int) -> np.ndarray:
+    """
+    Bootstrap: resample from a synthetic historical return distribution
+    (normally distributed with historical params), then apply scenario shocks.
+    """
+    rng = np.random.default_rng(random_seed)
+    pnl = np.zeros(num_iterations)
+
+    for asset in assets:
+        eff_vol = asset['annual_volatility'] * scenario['volatility_multiplier']
+        eff_ret = asset['annual_return']
+
+        atype = asset.get('asset_type', '').lower()
+        if 'equity' in atype:
+            eff_ret += scenario['equity_shock_pct']
+        elif 'bond' in atype:
+            eff_ret -= scenario['interest_rate_shock_bps'] / 10000.0
+
+        daily_mu    = eff_ret / 252.0
+        daily_sigma = eff_vol / np.sqrt(252.0)
+
+        # Simulate daily returns and sum over horizon (bootstrap aggregation)
+        daily_draws = rng.normal(daily_mu, daily_sigma, (num_iterations, time_horizon_days))
+        path_returns = daily_draws.sum(axis=1)
+
+        position_value = asset['weight'] * asset['base_price'] * asset['quantity']
+        pnl += position_value * path_returns
+
+    return pnl
+
+
+# ── Parametric (Variance-Covariance) ─────────────────────────────────────────
+def _run_parametric(assets, scenario, num_iterations: int, time_horizon_days: int, random_seed: int) -> np.ndarray:
+    """
+    Variance-Covariance: analytical normal distribution assumption.
+    Computes portfolio mu/sigma analytically, then samples from that distribution.
+    (Assumes zero cross-asset covariance for now — a standard simplification.)
+    """
+    np.random.seed(random_seed)
+    port_mu    = 0.0
+    port_var   = 0.0
+    port_value = 0.0
+
+    for asset in assets:
+        eff_vol = asset['annual_volatility'] * scenario['volatility_multiplier']
+        eff_ret = asset['annual_return']
+
+        atype = asset.get('asset_type', '').lower()
+        if 'equity' in atype:
+            eff_ret += scenario['equity_shock_pct']
+        elif 'bond' in atype:
+            eff_ret -= scenario['interest_rate_shock_bps'] / 10000.0
+
+        pos_value = asset['weight'] * asset['base_price'] * asset['quantity']
+        mu_h      = (eff_ret / 252.0) * time_horizon_days
+        sigma_h   = (eff_vol / np.sqrt(252.0)) * np.sqrt(time_horizon_days)
+
+        port_value += pos_value
+        port_mu    += pos_value * mu_h
+        port_var   += (pos_value * sigma_h) ** 2   # diagonal covariance assumption
+
+    port_sigma = np.sqrt(port_var)
+    return np.random.normal(port_mu, port_sigma, num_iterations)
+
+
+# ── Metric computation ────────────────────────────────────────────────────────
+def _compute_metrics(pnl: np.ndarray, confidence_level: float, num_iterations: int) -> Dict[str, float]:
+    """Derive the 5 standard risk metrics from a P&L distribution."""
+    tail_pct    = 1.0 - confidence_level           # e.g. 0.05 for 95% CL
+    tail_pct_99 = 0.01                             # VaR_99 always a 99% metric
+
+    pnl_sorted = np.sort(pnl)
+    idx_tail   = max(1, int(num_iterations * tail_pct))
+    idx_99     = max(1, int(num_iterations * tail_pct_99))
+
+    var_cl  = float(-pnl_sorted[idx_tail])
+    var_99  = float(-pnl_sorted[idx_99])
+    es_cl   = float(-np.mean(pnl_sorted[:idx_tail]))
+
+    total_value = np.sum(np.abs(pnl)) / num_iterations
+    volatility  = float(np.std(pnl) / total_value) if total_value > 0 else 0.0
+    max_drawdown = float(-np.min(pnl))
+
+    cl_label = f"{int(confidence_level * 100)}"
     return {
-        'VaR_95': float(max(0.0, var_95)),  # ensuring strictly positive per trigger Check
-        'VaR_99': float(max(0.0, var_99)),
-        'ES_95': float(max(0.0, es_95)),
-        'volatility': float(volatility),
-        'max_drawdown': float(max(0.0, max_drawdown))
+        f'VaR_{cl_label}':  max(0.0, var_cl),
+        'VaR_99':           max(0.0, var_99),
+        f'ES_{cl_label}':   max(0.0, es_cl),
+        'volatility':       max(0.0, volatility),
+        'max_drawdown':     max(0.0, max_drawdown),
     }
+
+
+# ── Public entry point ────────────────────────────────────────────────────────
+SIMULATION_ENGINES = {
+    'monte_carlo': _run_gbm,
+    'historical':  _run_historical_bootstrap,
+    'parametric':  _run_parametric,
+}
+
+def run_monte_carlo(
+    assets,
+    scenario,
+    num_iterations: int,
+    time_horizon_days: int,
+    random_seed: int,
+    simulation_type: str = 'monte_carlo',
+    confidence_level: float = 0.95,
+) -> Dict[str, float]:
+    """
+    Unified simulation dispatcher.
+
+    :param simulation_type: 'monte_carlo' | 'historical' | 'parametric'
+    :param confidence_level: 0.90 | 0.95 | 0.99
+    """
+    engine = SIMULATION_ENGINES.get(simulation_type, _run_gbm)
+    pnl    = engine(assets, scenario, num_iterations, time_horizon_days, random_seed)
+    return _compute_metrics(pnl, confidence_level, num_iterations)

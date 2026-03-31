@@ -5,7 +5,7 @@ from typing import List
 from core.database import get_db
 from core.auth import require_role, get_current_user
 from models.portfolio import Portfolio, PortfolioAsset
-from schemas.portfolio import PortfolioCreate, PortfolioResponse
+from schemas.portfolio import PortfolioCreate, PortfolioResponse, PortfolioUpdate
 from sqlalchemy.exc import IntegrityError
 
 router = APIRouter()
@@ -81,6 +81,46 @@ def update_portfolio_assets(
     try:
         db.commit()
         return {"detail": "Portfolio assets updated."}
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e.orig))
+
+
+@router.put("/{portfolio_id}", response_model=PortfolioResponse)
+def update_portfolio(
+    portfolio_id: int,
+    payload: PortfolioUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_role("ADMIN", "ANALYST")),
+):
+    """
+    Edit portfolio metadata (name, description, currency, status)
+    and optionally replace the full asset allocation in one request.
+    Access: ADMIN, ANALYST
+    """
+    port = db.query(Portfolio).filter(Portfolio.portfolio_id == portfolio_id).first()
+    if not port:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    for field in ("name", "description", "base_currency", "status"):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(port, field, value)
+
+    if payload.assets is not None:
+        db.query(PortfolioAsset).filter(PortfolioAsset.portfolio_id == portfolio_id).delete()
+        for a in payload.assets:
+            db.add(PortfolioAsset(
+                portfolio_id=portfolio_id,
+                asset_id=a.asset_id,
+                weight=a.weight,
+                quantity=a.quantity,
+            ))
+
+    try:
+        db.commit()
+        db.refresh(port)
+        return port
     except IntegrityError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e.orig))

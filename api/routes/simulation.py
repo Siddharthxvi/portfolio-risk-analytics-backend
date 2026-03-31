@@ -47,6 +47,8 @@ def run_adhoc_simulation(req: AdHocSimulationRequest):
             num_iterations=req.num_iterations,
             time_horizon_days=req.time_horizon_days,
             random_seed=req.random_seed,
+            simulation_type=req.simulation_type,
+            confidence_level=req.confidence_level,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Simulation Math Engine Failure: {str(e)}")
@@ -126,7 +128,10 @@ def run_simulation(
 
     try:
         metrics = run_monte_carlo(
-            assets_payload, scenario_payload, req.num_simulations, req.time_horizon_days, req.random_seed
+            assets_payload, scenario_payload,
+            req.num_simulations, req.time_horizon_days, req.random_seed,
+            simulation_type=req.simulation_type,
+            confidence_level=req.confidence_level,
         )
         for k, v in metrics.items():
             conf = 0.95 if "95" in k else (0.99 if "99" in k else None)

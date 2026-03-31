@@ -5,7 +5,7 @@ from typing import List
 from core.database import get_db
 from core.auth import require_role, get_current_user
 from models.simulation import Scenario
-from schemas.scenario import ScenarioCreate, ScenarioResponse
+from schemas.scenario import ScenarioCreate, ScenarioResponse, ScenarioUpdate
 from sqlalchemy.exc import IntegrityError
 
 router = APIRouter()
@@ -46,6 +46,33 @@ def create_scenario(
         db.commit()
         db.refresh(db_scen)
         return db_scen
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e.orig))
+
+
+@router.put("/{scenario_id}", response_model=ScenarioResponse)
+def update_scenario(
+    scenario_id: int,
+    payload: ScenarioUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_role("ADMIN", "ANALYST")),
+):
+    """
+    Partially update a scenario — only provided fields are changed.
+    Access: ADMIN, ANALYST
+    """
+    scen = db.query(Scenario).filter(Scenario.scenario_id == scenario_id).first()
+    if not scen:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+    for field, value in payload.model_dump(exclude_none=True).items():
+        setattr(scen, field, value)
+
+    try:
+        db.commit()
+        db.refresh(scen)
+        return scen
     except IntegrityError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e.orig))
