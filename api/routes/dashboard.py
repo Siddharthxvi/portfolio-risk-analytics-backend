@@ -138,7 +138,7 @@ def get_dashboard_summary(portfolio_id: int, db: Session = Depends(get_db)):
 @router.get("/{portfolio_id}/nav-history", dependencies=[ReadAccess])
 def get_nav_history(
     portfolio_id: int,
-    period: str = Query("1M", regex="^(1D|1W|1M|3M|1Y)$"),
+    period: str = Query("1M", pattern="^(1D|1W|1M|3M|1Y)$"),
     db: Session = Depends(get_db),
 ):
     """
