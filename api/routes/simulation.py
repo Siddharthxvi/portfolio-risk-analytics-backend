@@ -1,28 +1,42 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List, Dict
+from typing import List
 from datetime import datetime
 
 from core.database import get_db
-from core.auth import require_role, get_current_user
+from core.auth import require_role
 from models.portfolio import Portfolio
-from models.simulation import Scenario, SimulationRun, RiskMetric
-from schemas.simulation import SimulationRunCreate, SimulationRunResponse, AdHocSimulationRequest, AdHocSimulationResponse, HistogramResponse
-from services.simulation import run_monte_carlo
+from models.simulation import Scenario, SimulationRun
+from models.user_settings import UserSettings
+from schemas.simulation import (
+    SimulationRunCreate, 
+    SimulationRunResponse, 
+    AdHocSimulationRequest, 
+    AdHocSimulationResponse, 
+    HistogramResponse
+)
+from services.simulation_service import run_adhoc_simulation, execute_background_simulation
 
 router = APIRouter()
 
 ReadAccess   = Depends(require_role("ADMIN", "ANALYST", "VIEWER"))
 WriteAccess  = Depends(require_role("ADMIN", "ANALYST"))
-AdminOnly    = Depends(require_role("ADMIN"))
 
+def _get_user_settings(db: Session, user_id: int):
+    # Retrieve user settings, or return a set of minimal defaults structure
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+    if settings:
+        return settings.default_iterations, settings.default_horizon_days, settings.default_confidence_level
+    return 10000, 252, 0.95
 
 @router.post("/ad-hoc", response_model=AdHocSimulationResponse, dependencies=[WriteAccess])
-def run_adhoc_simulation(req: AdHocSimulationRequest):
+def run_adhoc(
+    req: AdHocSimulationRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = WriteAccess
+):
     """
     Stateless Monte Carlo simulation — no DB persistence.
-    Send raw assets + scenario, get 5 risk metrics back instantly.
-    Access: ADMIN, ANALYST
     """
     assets_payload = [
         {
@@ -40,34 +54,26 @@ def run_adhoc_simulation(req: AdHocSimulationRequest):
         "volatility_multiplier": req.scenario.volatility_multiplier,
         "equity_shock_pct": req.scenario.equity_shock_pct,
     }
+    
+    iters, horiz, conf = _get_user_settings(db, current_user["user_id"])
+    
+    num_iterations = req.num_iterations or iters
+    time_horizon = req.time_horizon_days or horiz
+    confidence_level = req.confidence_level or conf
+
     try:
-        metrics, histogram = run_monte_carlo(
+        metrics, histogram = run_adhoc_simulation(
             assets=assets_payload,
             scenario=scenario_payload,
-            num_iterations=req.num_iterations,
-            time_horizon_days=req.time_horizon_days,
+            num_iterations=num_iterations,
+            time_horizon_days=time_horizon,
             random_seed=req.random_seed,
             simulation_type=req.simulation_type,
-            confidence_level=req.confidence_level,
+            confidence_level=confidence_level,
         )
         return {"metrics": metrics, "histogram": histogram}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Simulation Math Engine Failure: {str(e)}")
-
-
-@router.get("/test", response_model=AdHocSimulationResponse, dependencies=[AdminOnly])
-def test_simulation_engine():
-    """
-    Hardcoded sanity-check: 60% AAPL / 40% US10Y in a 2008-style crisis.
-    Access: ADMIN only.
-    """
-    dummy_assets = [
-        {"asset_type": "equity", "weight": 0.6, "quantity": 600, "base_price": 100.0, "annual_volatility": 0.28, "annual_return": 0.12},
-        {"asset_type": "bond",   "weight": 0.4, "quantity": 400, "base_price": 100.0, "annual_volatility": 0.05, "annual_return": 0.04},
-    ]
-    dummy_scenario = {"interest_rate_shock_bps": -150, "volatility_multiplier": 2.5, "equity_shock_pct": -0.35}
-    metrics, histogram = run_monte_carlo(assets=dummy_assets, scenario=dummy_scenario, num_iterations=10000, time_horizon_days=100, random_seed=42)
-    return {"metrics": metrics, "histogram": histogram}
+        raise HTTPException(status_code=400, detail=f"Simulation Engine Failure: {str(e)}")
 
 
 @router.get("/", response_model=List[SimulationRunResponse], dependencies=[ReadAccess])
@@ -83,15 +89,25 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
     return run
 
 
+@router.get("/{run_id}/distribution", response_model=HistogramResponse, dependencies=[ReadAccess])
+def get_run_distribution(run_id: int, db: Session = Depends(get_db)):
+    run = db.query(SimulationRun).filter(SimulationRun.run_id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not run.histogram_data:
+        raise HTTPException(status_code=404, detail="Histogram data not available for this run")
+    return run.histogram_data
+
+
 @router.post("/", response_model=SimulationRunResponse)
-def run_simulation(
+def create_run_simulation(
     req: SimulationRunCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_role("ADMIN", "ANALYST")),
+    current_user: dict = Depends(require_role("ADMIN", "ANALYST"))
 ):
     """
-    Persistent simulation: loads portfolio/scenario from DB, saves results.
-    Access: ADMIN, ANALYST
+    Persistent simulation: Non-blocking, runs in background.
     """
     port = db.query(Portfolio).filter(Portfolio.portfolio_id == req.portfolio_id).first()
     scen = db.query(Scenario).filter(Scenario.scenario_id == req.scenario_id).first()
@@ -99,65 +115,24 @@ def run_simulation(
     if not port or not scen:
         raise HTTPException(status_code=404, detail="Portfolio or Scenario not found")
 
-    assets_payload = [
-        {
-            "asset_type": pa.asset.asset_type.type_name if pa.asset.asset_type else "equity",
-            "weight": pa.weight,
-            "quantity": pa.quantity,
-            "base_price": pa.asset.base_price,
-            "annual_volatility": pa.asset.annual_volatility,
-            "annual_return": pa.asset.annual_return,
-        }
-        for pa in port.assets
-    ]
-    scenario_payload = {
-        "interest_rate_shock_bps": scen.interest_rate_shock_bps,
-        "volatility_multiplier": scen.volatility_multiplier,
-        "equity_shock_pct": scen.equity_shock_pct,
-    }
-
+    iters, horiz, _ = _get_user_settings(db, current_user["user_id"])
+    
     sim_run = SimulationRun(
         portfolio_id=req.portfolio_id,
         scenario_id=req.scenario_id,
         initiated_by=current_user["user_id"],
         status="running",
-        num_simulations=req.num_simulations,
-        time_horizon_days=req.time_horizon_days,
+        run_type=req.simulation_type,
+        num_simulations=req.num_simulations or iters,
+        time_horizon_days=req.time_horizon_days or horiz,
         random_seed=req.random_seed,
     )
     db.add(sim_run)
-    db.flush()
+    db.commit()
+    db.refresh(sim_run)
 
-    try:
-        metrics, histogram = run_monte_carlo(
-            assets_payload, scenario_payload,
-            req.num_simulations, req.time_horizon_days, req.random_seed,
-            simulation_type=req.simulation_type,
-            confidence_level=req.confidence_level,
-        )
-        for k, v in metrics.items():
-            conf = 0.95 if "95" in k else (0.99 if "99" in k else None)
-            db.add(RiskMetric(run_id=sim_run.run_id, metric_type=k, metric_value=v, confidence_level=conf))
+    # Schedule background worker
+    background_tasks.add_task(execute_background_simulation, sim_run.run_id)
 
-        sim_run.status = "completed"
-        sim_run.completed_at = datetime.utcnow()
-        sim_run.histogram_data = histogram   # SAVE it persistently
-        db.commit()
-        db.refresh(sim_run)
-        
-        # Manually construct response to include the latest histogram we just generated
-        response = SimulationRunResponse.model_validate(sim_run)
-        return response
-    except Exception as e:
-        db.rollback()
-        db.add(SimulationRun(
-            portfolio_id=req.portfolio_id,
-            scenario_id=req.scenario_id,
-            initiated_by=current_user["user_id"],
-            status="failed",
-            num_simulations=req.num_simulations,
-            time_horizon_days=req.time_horizon_days,
-            random_seed=req.random_seed,
-        ))
-        db.commit()
-        raise HTTPException(status_code=500, detail=f"Simulation failed: {str(e)}")
+    # Return immediately
+    return SimulationRunResponse.model_validate(sim_run)

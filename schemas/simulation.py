@@ -13,16 +13,16 @@ class RiskMetricResponse(BaseModel):
 class SimulationRunCreate(BaseModel):
     portfolio_id: int
     scenario_id: int
-    num_simulations: int = Field(default=10000, ge=1000, le=10000)
-    time_horizon_days: int = Field(default=252)
+    num_simulations: Optional[int] = Field(default=None, ge=1000, le=10000)
+    time_horizon_days: Optional[int] = Field(default=None)
     random_seed: int = Field(default=42)
     simulation_type: Literal['monte_carlo', 'historical', 'parametric'] = 'monte_carlo'
-    confidence_level: Literal[0.90, 0.95, 0.99] = 0.95
+    confidence_level: Optional[Literal[0.90, 0.95, 0.99]] = None
 
     @field_validator('time_horizon_days')
     @classmethod
     def validate_horizon(cls, v):
-        if v not in (1, 10, 252):
+        if v is not None and v not in (1, 10, 252):
             raise ValueError('Time horizon must be 1, 10, or 252')
         return v
 
@@ -74,16 +74,16 @@ class ScenarioInput(BaseModel):
 class AdHocSimulationRequest(BaseModel):
     portfolio_assets: List[AssetInput]
     scenario: ScenarioInput
-    num_iterations: int = Field(default=10000, ge=1000, le=10000, description="Number of independent MC paths")
-    time_horizon_days: int = Field(default=252, description="Between 1 and 252 (inclusive) trading days")
+    num_iterations: Optional[int] = Field(default=None, ge=1000, le=10000, description="Number of independent MC paths")
+    time_horizon_days: Optional[int] = Field(default=None, description="Between 1 and 252 (inclusive) trading days")
     random_seed: int = Field(default=42, description="Numpy RNG seed for reproducibility")
     simulation_type: Literal['monte_carlo', 'historical', 'parametric'] = 'monte_carlo'
-    confidence_level: Literal[0.90, 0.95, 0.99] = 0.95
+    confidence_level: Optional[Literal[0.90, 0.95, 0.99]] = None
 
     @field_validator('time_horizon_days')
     @classmethod
-    def validate_time_horizon(cls, v: int) -> int:
-        if not (1 <= v <= 252):
+    def validate_time_horizon(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (1 <= v <= 252):
             raise ValueError("time_horizon_days must be between 1 and 252 (inclusive).")
         return v
 

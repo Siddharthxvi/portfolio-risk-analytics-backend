@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from api.routes import assets, portfolios, scenarios, simulation, comparison, auth, users, search
+from api.routes import assets, portfolios, scenarios, simulation, comparison, auth, users, search, dev, settings
 
 api_router = APIRouter()
 
@@ -11,3 +11,5 @@ api_router.include_router(scenarios.router,   prefix="/scenarios",        tags=[
 api_router.include_router(simulation.router,  prefix="/simulation-runs",  tags=["Simulation Runs"])
 api_router.include_router(comparison.router,  prefix="/comparison",       tags=["Comparison Dashboard"])
 api_router.include_router(search.router,      prefix="/search",           tags=["Global Search"])
+api_router.include_router(dev.router,         prefix="/dev",              tags=["Developer/System"])
+api_router.include_router(settings.router,    prefix="/settings",         tags=["User Settings"])

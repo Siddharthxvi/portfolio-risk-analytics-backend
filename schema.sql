@@ -337,3 +337,10 @@ JOIN risk_metric rm ON sr.run_id = rm.run_id;
 -- GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO analyst_user;
 -- GRANT SELECT ON ALL TABLES IN SCHEMA public TO viewer_user;
 -- GRANT SELECT ON portfolio_summary TO viewer_user;
+
+CREATE TABLE user_settings (
+    user_id integer NOT NULL PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    default_iterations integer NOT NULL DEFAULT 10000,
+    default_horizon_days integer NOT NULL DEFAULT 252,
+    default_confidence_level double precision NOT NULL DEFAULT 0.95
+);
