@@ -35,3 +35,41 @@ class SimulationRunResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+from typing import Literal
+
+class AssetInput(BaseModel):
+    asset_name: str
+    asset_type: Literal['equity', 'bond', 'derivative', 'commodity']
+    base_price: float = Field(gt=0, description="Reference price used in simulation")
+    annual_volatility: float = Field(gt=0, description="Annualised standard deviation, e.g. 0.25 = 25%")
+    annual_return: float = Field(description="Expected annualised return")
+    weight: float = Field(gt=0, le=1.0, description="Portfolio allocation fraction")
+    quantity: float = Field(gt=0, description="Number of units held")
+
+class ScenarioInput(BaseModel):
+    interest_rate_shock_bps: int = Field(description="Basis points; positive = rise, negative = cut")
+    volatility_multiplier: float = Field(gt=0, description="Applied to each asset's volatility")
+    equity_shock_pct: float = Field(ge=-1.0, le=1.0, description="Additive shock to equity asset returns")
+
+class AdHocSimulationRequest(BaseModel):
+    portfolio_assets: List[AssetInput]
+    scenario: ScenarioInput
+    num_iterations: int = Field(ge=1000, le=100000, description="Number of independent MC paths")
+    time_horizon_days: int = Field(description="Between 1 and 252 (inclusive) trading days")
+    random_seed: int = Field(description="Numpy RNG seed for reproducibility")
+
+    @field_validator('time_horizon_days')
+    @classmethod
+    def validate_time_horizon(cls, v: int) -> int:
+        if v not in (1, 10, 252):
+            raise ValueError("time_horizon_days must be exactly 1, 10, or 252.")
+        return v
+
+    @field_validator('portfolio_assets')
+    @classmethod
+    def validate_weights(cls, assets: List[AssetInput]) -> List[AssetInput]:
+        total_weight = sum(a.weight for a in assets)
+        if abs(total_weight - 1.0) > 0.001:
+            raise ValueError(f"Portfolio weights must sum to 1.0. Found: {total_weight:.4f}")
+        return assets

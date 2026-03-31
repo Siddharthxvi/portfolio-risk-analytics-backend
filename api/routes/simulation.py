@@ -1,15 +1,60 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict
 from datetime import datetime
 from core.database import get_db
 from models.portfolio import Portfolio
 from models.simulation import Scenario, SimulationRun, RiskMetric
-from schemas.simulation import SimulationRunCreate, SimulationRunResponse
+from schemas.simulation import SimulationRunCreate, SimulationRunResponse, AdHocSimulationRequest
 from services.simulation import run_monte_carlo
 from sqlalchemy.exc import IntegrityError
 
 router = APIRouter()
+
+@router.post("/ad-hoc", response_model=Dict[str, float])
+def run_adhoc_simulation(req: AdHocSimulationRequest):
+    assets_payload = []
+    for asset in req.portfolio_assets:
+        assets_payload.append({
+            'asset_type': asset.asset_type,
+            'weight': asset.weight,
+            'quantity': asset.quantity,
+            'base_price': asset.base_price,
+            'annual_volatility': asset.annual_volatility,
+            'annual_return': asset.annual_return
+        })
+        
+    scenario_payload = {
+        'interest_rate_shock_bps': req.scenario.interest_rate_shock_bps,
+        'volatility_multiplier': req.scenario.volatility_multiplier,
+        'equity_shock_pct': req.scenario.equity_shock_pct
+    }
+    
+    try:
+        metrics = run_monte_carlo(
+            assets=assets_payload, 
+            scenario=scenario_payload, 
+            iterations=req.num_iterations, 
+            horizon=req.time_horizon_days, 
+            seed=req.random_seed
+        )
+        return metrics
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Simulation Math Engine Failure: {str(e)}")
+
+@router.get("/test", response_model=Dict[str, float])
+def test_simulation_engine():
+    """
+    Dummy endpoint you can open in your browser to instantly verify the Monte Carlo engine works. 
+    Hardcoded with 60% AAPL, 40% US10Y against a 2008-style crisis scenario.
+    """
+    dummy_assets = [
+        {'asset_type': 'equity', 'weight': 0.6, 'quantity': 600, 'base_price': 100.0, 'annual_volatility': 0.28, 'annual_return': 0.12},
+        {'asset_type': 'bond', 'weight': 0.4, 'quantity': 400, 'base_price': 100.0, 'annual_volatility': 0.05, 'annual_return': 0.04}
+    ]
+    dummy_scenario = {'interest_rate_shock_bps': -150, 'volatility_multiplier': 2.5, 'equity_shock_pct': -0.35}
+    
+    return run_monte_carlo(assets=dummy_assets, scenario=dummy_scenario, iterations=10000, horizon=100, seed=42)
 
 @router.post("/", response_model=SimulationRunResponse)
 def run_simulation(req: SimulationRunCreate, db: Session = Depends(get_db)):
