@@ -62,8 +62,8 @@ class AdHocSimulationRequest(BaseModel):
     @field_validator('time_horizon_days')
     @classmethod
     def validate_time_horizon(cls, v: int) -> int:
-        if v not in (1, 10, 252):
-            raise ValueError("time_horizon_days must be exactly 1, 10, or 252.")
+        if not (1 <= v <= 252):
+            raise ValueError("time_horizon_days must be between 1 and 252 (inclusive).")
         return v
 
     @field_validator('portfolio_assets')
