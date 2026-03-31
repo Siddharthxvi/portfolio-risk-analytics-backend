@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict
 from datetime import datetime
 
 class RiskMetricResponse(BaseModel):
@@ -13,7 +13,7 @@ class RiskMetricResponse(BaseModel):
 class SimulationRunCreate(BaseModel):
     portfolio_id: int
     scenario_id: int
-    num_simulations: int = Field(default=10000, ge=1000, le=100000)
+    num_simulations: int = Field(default=10000, ge=1000, le=10000)
     time_horizon_days: int = Field(default=252)
     random_seed: int = Field(default=42)
     simulation_type: Literal['monte_carlo', 'historical', 'parametric'] = 'monte_carlo'
@@ -26,6 +26,14 @@ class SimulationRunCreate(BaseModel):
             raise ValueError('Time horizon must be 1, 10, or 252')
         return v
 
+class HistogramResponse(BaseModel):
+    bin_edges: List[float]
+    counts: List[int]
+    bin_width: float
+    pnl_min: float
+    pnl_max: float
+    mean_pnl: float
+
 class SimulationRunResponse(BaseModel):
     run_id: int
     portfolio_id: int
@@ -35,6 +43,14 @@ class SimulationRunResponse(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     risk_metrics: List[RiskMetricResponse] = []
+    histogram_data: Optional[HistogramResponse] = None
+
+    class Config:
+        from_attributes = True
+
+class AdHocSimulationResponse(BaseModel):
+    metrics: Dict[str, float]
+    histogram: HistogramResponse
 
     class Config:
         from_attributes = True
@@ -58,7 +74,7 @@ class ScenarioInput(BaseModel):
 class AdHocSimulationRequest(BaseModel):
     portfolio_assets: List[AssetInput]
     scenario: ScenarioInput
-    num_iterations: int = Field(default=10000, ge=1000, le=100000, description="Number of independent MC paths")
+    num_iterations: int = Field(default=10000, ge=1000, le=10000, description="Number of independent MC paths")
     time_horizon_days: int = Field(default=252, description="Between 1 and 252 (inclusive) trading days")
     random_seed: int = Field(default=42, description="Numpy RNG seed for reproducibility")
     simulation_type: Literal['monte_carlo', 'historical', 'parametric'] = 'monte_carlo'

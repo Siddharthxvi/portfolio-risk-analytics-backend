@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database import Base
@@ -36,6 +36,7 @@ class SimulationRun(Base):
     random_seed = Column(Integer, nullable=False)
     time_horizon_days = Column(Integer, nullable=False)
     run_timestamp = Column(DateTime, nullable=False, default=func.now())
+    histogram_data = Column(JSON, nullable=True)
 
     portfolio = relationship("Portfolio", back_populates="simulation_runs")
     scenario = relationship("Scenario", back_populates="simulation_runs")

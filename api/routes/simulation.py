@@ -7,7 +7,7 @@ from core.database import get_db
 from core.auth import require_role, get_current_user
 from models.portfolio import Portfolio
 from models.simulation import Scenario, SimulationRun, RiskMetric
-from schemas.simulation import SimulationRunCreate, SimulationRunResponse, AdHocSimulationRequest
+from schemas.simulation import SimulationRunCreate, SimulationRunResponse, AdHocSimulationRequest, AdHocSimulationResponse, HistogramResponse
 from services.simulation import run_monte_carlo
 
 router = APIRouter()
@@ -17,7 +17,7 @@ WriteAccess  = Depends(require_role("ADMIN", "ANALYST"))
 AdminOnly    = Depends(require_role("ADMIN"))
 
 
-@router.post("/ad-hoc", response_model=Dict[str, float], dependencies=[WriteAccess])
+@router.post("/ad-hoc", response_model=AdHocSimulationResponse, dependencies=[WriteAccess])
 def run_adhoc_simulation(req: AdHocSimulationRequest):
     """
     Stateless Monte Carlo simulation — no DB persistence.
@@ -41,7 +41,7 @@ def run_adhoc_simulation(req: AdHocSimulationRequest):
         "equity_shock_pct": req.scenario.equity_shock_pct,
     }
     try:
-        return run_monte_carlo(
+        metrics, histogram = run_monte_carlo(
             assets=assets_payload,
             scenario=scenario_payload,
             num_iterations=req.num_iterations,
@@ -50,11 +50,12 @@ def run_adhoc_simulation(req: AdHocSimulationRequest):
             simulation_type=req.simulation_type,
             confidence_level=req.confidence_level,
         )
+        return {"metrics": metrics, "histogram": histogram}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Simulation Math Engine Failure: {str(e)}")
 
 
-@router.get("/test", response_model=Dict[str, float], dependencies=[AdminOnly])
+@router.get("/test", response_model=AdHocSimulationResponse, dependencies=[AdminOnly])
 def test_simulation_engine():
     """
     Hardcoded sanity-check: 60% AAPL / 40% US10Y in a 2008-style crisis.
@@ -65,7 +66,8 @@ def test_simulation_engine():
         {"asset_type": "bond",   "weight": 0.4, "quantity": 400, "base_price": 100.0, "annual_volatility": 0.05, "annual_return": 0.04},
     ]
     dummy_scenario = {"interest_rate_shock_bps": -150, "volatility_multiplier": 2.5, "equity_shock_pct": -0.35}
-    return run_monte_carlo(assets=dummy_assets, scenario=dummy_scenario, num_iterations=10000, time_horizon_days=100, random_seed=42)
+    metrics, histogram = run_monte_carlo(assets=dummy_assets, scenario=dummy_scenario, num_iterations=10000, time_horizon_days=100, random_seed=42)
+    return {"metrics": metrics, "histogram": histogram}
 
 
 @router.get("/", response_model=List[SimulationRunResponse], dependencies=[ReadAccess])
@@ -127,7 +129,7 @@ def run_simulation(
     db.flush()
 
     try:
-        metrics = run_monte_carlo(
+        metrics, histogram = run_monte_carlo(
             assets_payload, scenario_payload,
             req.num_simulations, req.time_horizon_days, req.random_seed,
             simulation_type=req.simulation_type,
@@ -139,9 +141,13 @@ def run_simulation(
 
         sim_run.status = "completed"
         sim_run.completed_at = datetime.utcnow()
+        sim_run.histogram_data = histogram   # SAVE it persistently
         db.commit()
         db.refresh(sim_run)
-        return sim_run
+        
+        # Manually construct response to include the latest histogram we just generated
+        response = SimulationRunResponse.model_validate(sim_run)
+        return response
     except Exception as e:
         db.rollback()
         db.add(SimulationRun(
