@@ -34,9 +34,9 @@ def run_adhoc_simulation(req: AdHocSimulationRequest):
         metrics = run_monte_carlo(
             assets=assets_payload, 
             scenario=scenario_payload, 
-            iterations=req.num_iterations, 
-            horizon=req.time_horizon_days, 
-            seed=req.random_seed
+            num_iterations=req.num_iterations, 
+            time_horizon_days=req.time_horizon_days, 
+            random_seed=req.random_seed
         )
         return metrics
     except Exception as e:
@@ -54,7 +54,7 @@ def test_simulation_engine():
     ]
     dummy_scenario = {'interest_rate_shock_bps': -150, 'volatility_multiplier': 2.5, 'equity_shock_pct': -0.35}
     
-    return run_monte_carlo(assets=dummy_assets, scenario=dummy_scenario, iterations=10000, horizon=100, seed=42)
+    return run_monte_carlo(assets=dummy_assets, scenario=dummy_scenario, num_iterations=10000, time_horizon_days=100, random_seed=42)
 
 @router.post("/", response_model=SimulationRunResponse)
 def run_simulation(req: SimulationRunCreate, db: Session = Depends(get_db)):
