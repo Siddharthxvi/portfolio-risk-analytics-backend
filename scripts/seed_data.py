@@ -70,6 +70,66 @@ ASSETS = [
         "annual_return": 0.04,
         "type_name": "bond"
     },
+    {
+        "ticker": "GOOGL",
+        "asset_name": "Alphabet Inc.",
+        "currency": "USD",
+        "exchange": "NASDAQ",
+        "sector": "Technology",
+        "country": "USA",
+        "base_price": 150.0,
+        "annual_volatility": 0.24,
+        "annual_return": 0.13,
+        "type_name": "equity"
+    },
+    {
+        "ticker": "AMZN",
+        "asset_name": "Amazon.com Inc.",
+        "currency": "USD",
+        "exchange": "NASDAQ",
+        "sector": "Consumer Cyclical",
+        "country": "USA",
+        "base_price": 180.0,
+        "annual_volatility": 0.28,
+        "annual_return": 0.14,
+        "type_name": "equity"
+    },
+    {
+        "ticker": "NVDA",
+        "asset_name": "NVIDIA Corporation",
+        "currency": "USD",
+        "exchange": "NASDAQ",
+        "sector": "Technology",
+        "country": "USA",
+        "base_price": 900.0,
+        "annual_volatility": 0.45,
+        "annual_return": 0.25,
+        "type_name": "equity"
+    },
+    {
+        "ticker": "GLD",
+        "asset_name": "SPDR Gold Shares",
+        "currency": "USD",
+        "exchange": "NYSE",
+        "sector": "Commodity",
+        "country": "USA",
+        "base_price": 215.0,
+        "annual_volatility": 0.14,
+        "annual_return": 0.06,
+        "type_name": "commodity"
+    },
+    {
+        "ticker": "META",
+        "asset_name": "Meta Platforms, Inc.",
+        "currency": "USD",
+        "exchange": "NASDAQ",
+        "sector": "Technology",
+        "country": "USA",
+        "base_price": 480.0,
+        "annual_volatility": 0.32,
+        "annual_return": 0.16,
+        "type_name": "equity"
+    },
 ]
 
 # Scenarios
@@ -125,9 +185,10 @@ PORTFOLIOS = [
         "description": "High-growth tech focused allocation.",
         "base_currency": "USD",
         "assets": [
-            {"ticker": "AAPL", "weight": 0.4, "quantity": 200},
-            {"ticker": "MSFT", "weight": 0.4, "quantity": 100},
-            {"ticker": "TSLA", "weight": 0.2, "quantity": 150},
+            {"ticker": "AAPL", "weight": 0.25, "quantity": 200},
+            {"ticker": "MSFT", "weight": 0.25, "quantity": 100},
+            {"ticker": "AMZN", "weight": 0.25, "quantity": 150},
+            {"ticker": "NVDA", "weight": 0.25, "quantity": 50},
         ]
     },
     {
