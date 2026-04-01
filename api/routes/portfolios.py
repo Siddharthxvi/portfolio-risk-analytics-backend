@@ -5,7 +5,7 @@ from typing import List
 from core.database import get_db
 from core.auth import require_role, get_current_user
 from models.portfolio import Portfolio, PortfolioAsset
-from schemas.portfolio import PortfolioCreate, PortfolioResponse, PortfolioUpdate
+from schemas.portfolio import PortfolioCreate, PortfolioResponse, PortfolioUpdate, PortfolioAssetCreate
 from sqlalchemy.exc import IntegrityError
 
 router = APIRouter()
@@ -62,14 +62,16 @@ def create_portfolio(
 
 @router.put("/{portfolio_id}/assets", dependencies=[WriteAccess])
 def update_portfolio_assets(
-    portfolio_id: int, portfolio: PortfolioCreate, db: Session = Depends(get_db)
+    portfolio_id: int,
+    assets: List[PortfolioAssetCreate],
+    db: Session = Depends(get_db)
 ):
     db_port = db.query(Portfolio).filter(Portfolio.portfolio_id == portfolio_id).first()
     if not db_port:
         raise HTTPException(status_code=404, detail="Portfolio not found")
 
     db.query(PortfolioAsset).filter(PortfolioAsset.portfolio_id == portfolio_id).delete()
-    for a in portfolio.assets:
+    for a in assets:
         pa = PortfolioAsset(
             portfolio_id=db_port.portfolio_id,
             asset_id=a.asset_id,

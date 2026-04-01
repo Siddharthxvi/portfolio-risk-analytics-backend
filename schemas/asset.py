@@ -5,9 +5,9 @@ class AssetBase(BaseModel):
     ticker: str
     asset_name: str
     currency: str
-    exchange: str = "N/A"
-    sector: str = "N/A"
-    country: str = "N/A"
+    exchange: Optional[str] = "N/A"
+    sector: Optional[str] = "N/A"
+    country: Optional[str] = "N/A"
     base_price: float = Field(..., gt=0)
     annual_volatility: float = Field(..., gt=0)
     annual_return: float

@@ -13,7 +13,7 @@ class RiskMetricResponse(BaseModel):
 class SimulationRunCreate(BaseModel):
     portfolio_id: int
     scenario_id: int
-    num_simulations: Optional[int] = Field(default=None, ge=1000, le=10000)
+    num_simulations: Optional[int] = Field(default=None, ge=1, le=10000)
     time_horizon_days: Optional[int] = Field(default=None)
     random_seed: int = Field(default=42)
     simulation_type: Literal['monte_carlo', 'historical', 'parametric'] = 'monte_carlo'
@@ -27,7 +27,7 @@ class SimulationRunCreate(BaseModel):
         return v
 
 class SimulationRunUpdate(BaseModel):
-    num_simulations: Optional[int] = Field(None, ge=1000, le=10000)
+    num_simulations: Optional[int] = Field(None, ge=1, le=10000)
     time_horizon_days: Optional[int] = Field(None)
     random_seed: Optional[int] = None
     simulation_type: Optional[Literal['monte_carlo', 'historical', 'parametric']] = None
@@ -82,7 +82,7 @@ class ScenarioInput(BaseModel):
 class AdHocSimulationRequest(BaseModel):
     portfolio_assets: List[AssetInput]
     scenario: ScenarioInput
-    num_iterations: Optional[int] = Field(default=None, ge=1000, le=10000, description="Number of independent MC paths")
+    num_iterations: Optional[int] = Field(default=None, ge=1, le=10000, description="Number of independent MC paths")
     time_horizon_days: Optional[int] = Field(default=None, description="Between 1 and 252 (inclusive) trading days")
     random_seed: int = Field(default=42, description="Numpy RNG seed for reproducibility")
     simulation_type: Literal['monte_carlo', 'historical', 'parametric'] = 'monte_carlo'
@@ -102,3 +102,5 @@ class AdHocSimulationRequest(BaseModel):
         if abs(total_weight - 1.0) > 0.001:
             raise ValueError(f"Portfolio weights must sum to 1.0. Found: {total_weight:.4f}")
         return assets
+
+
