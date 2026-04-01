@@ -68,6 +68,25 @@ def bootstrap_data(db: Session = Depends(get_db)):
         db.rollback()
         return {"status": "error", "message": str(e)}
 
+@app.get("/sync-db")
+def sync_db(db: Session = Depends(get_db)):
+    """Reconciles the database with the latest code models (adds missing tables/columns)."""
+    from sqlalchemy import text
+    try:
+        # Create missing tables (e.g., user_settings)
+        Base.metadata.create_all(bind=engine)
+        
+        # Manually add columns to existing tables since create_all doesn't handle migrations
+        db.execute(text("ALTER TABLE simulation_run ADD COLUMN IF NOT EXISTS histogram_data JSONB;"))
+        db.execute(text("ALTER TABLE simulation_run ADD COLUMN IF NOT EXISTS run_type VARCHAR DEFAULT 'monte_carlo';"))
+        
+        db.commit()
+        return {"status": "success", "message": "Database successfully synced with code models."}
+    except Exception as e:
+        db.rollback()
+        return {"status": "error", "message": str(e)}
+
+
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
     try:
