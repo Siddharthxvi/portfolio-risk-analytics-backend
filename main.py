@@ -79,6 +79,7 @@ def sync_db(db: Session = Depends(get_db)):
         # Manually add columns to existing tables since create_all doesn't handle migrations
         db.execute(text("ALTER TABLE simulation_run ADD COLUMN IF NOT EXISTS histogram_data JSONB;"))
         db.execute(text("ALTER TABLE simulation_run ADD COLUMN IF NOT EXISTS run_type VARCHAR DEFAULT 'monte_carlo';"))
+        db.execute(text("ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS risk_threshold_pct FLOAT DEFAULT 0.10;"))
         
         db.commit()
         return {"status": "success", "message": "Database successfully synced with code models."}

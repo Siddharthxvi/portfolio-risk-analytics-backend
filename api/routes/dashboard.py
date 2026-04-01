@@ -29,37 +29,54 @@ def get_dashboard_summary(portfolio_id: int, db: Session = Depends(get_db)):
     if not port:
         raise HTTPException(status_code=404, detail="Portfolio not found")
 
-    # ── 1. Latest completed run ──────────────────────────────────────────────
-    latest_run = (
+    # ── 1. Latest vs Previous completed runs for Deltas ─────────────────────
+    runs = (
         db.query(SimulationRun)
         .filter(
             SimulationRun.portfolio_id == portfolio_id,
             SimulationRun.status == "completed",
         )
         .order_by(desc(SimulationRun.completed_at))
-        .first()
+        .limit(2)
+        .all()
     )
 
+    latest_run = runs[0] if len(runs) > 0 else None
+    prev_run   = runs[1] if len(runs) > 1 else None
+
     latest_metrics = {}
+    metric_deltas = {}
     histogram = None
     sharpe_ratio = None
 
     if latest_run:
         for m in latest_run.risk_metrics:
             latest_metrics[m.metric_type] = m.metric_value
+            
+            # Find matching metric in previous run for delta
+            if prev_run:
+                pm = next((x for x in prev_run.risk_metrics if x.metric_type == m.metric_type), None)
+                if pm:
+                    metric_deltas[f"{m.metric_type}_delta"] = round(m.metric_value - pm.metric_value, 6)
+
         histogram = latest_run.histogram_data
 
         # Sharpe = (mean_pnl / std) * sqrt(252) derived from histogram if available
         if histogram and histogram.get("mean_pnl") is not None:
             mean_pnl = histogram["mean_pnl"]
-            # Approximate std from bin range
             pnl_range = histogram.get("pnl_max", 0) - histogram.get("pnl_min", 0)
             approx_std = pnl_range / 6  # ~6 sigma range heuristic
             if approx_std > 0:
                 daily_sharpe = mean_pnl / approx_std
                 sharpe_ratio = round(daily_sharpe * (252 ** 0.5), 4)
 
-    # ── 2. Holdings + Marginal Risk Contribution ─────────────────────────────
+    # ── 2. Live Status ────────────────────────────────────────────────────────
+    is_simulation_running = db.query(SimulationRun).filter(
+        SimulationRun.portfolio_id == portfolio_id,
+        SimulationRun.status.in_(["pending", "running"])
+    ).first() is not None
+
+    # ── 3. Holdings + Marginal Risk Contribution ─────────────────────────────
     holdings = []
     has_run_data = latest_run and latest_metrics
 
@@ -70,7 +87,6 @@ def get_dashboard_summary(portfolio_id: int, db: Session = Depends(get_db)):
         base_price = asset.base_price if asset else 0.0
         position_value = pa.weight * base_price * pa.quantity
 
-        # Marginal VaR: run a mini 1000-iter simulation with just this asset scaled
         marginal_var = None
         if has_run_data and asset and latest_run:
             try:
@@ -110,7 +126,7 @@ def get_dashboard_summary(portfolio_id: int, db: Session = Depends(get_db)):
             "marginal_var_95": marginal_var,
         })
 
-    # ── 3. Runs summary counts ────────────────────────────────────────────────
+    # ── 4. Runs summary counts ────────────────────────────────────────────────
     all_runs = db.query(SimulationRun).filter(SimulationRun.portfolio_id == portfolio_id).all()
     runs_summary = {
         "total": len(all_runs),
@@ -127,11 +143,66 @@ def get_dashboard_summary(portfolio_id: int, db: Session = Depends(get_db)):
         "portfolio_name": port.name,
         "base_currency": port.base_currency,
         "status": port.status,
+        "is_simulation_running": is_simulation_running,
         "latest_metrics": latest_metrics,
+        "metric_deltas": metric_deltas,
         "sharpe_ratio": sharpe_ratio,
         "histogram": histogram,
         "holdings": holdings,
         "runs_summary": runs_summary,
+    }
+
+
+@router.get("/{portfolio_id}/alerts", dependencies=[ReadAccess])
+def get_risk_alerts(portfolio_id: int, db: Session = Depends(get_db)):
+    """
+    Check latest metrics against user-defined thresholds (from UserSettings).
+    Returns a list of active alerts/breaches.
+    """
+    from models.user_settings import UserSettings
+    
+    port = db.query(Portfolio).filter(Portfolio.portfolio_id == portfolio_id).first()
+    if not port:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    # Get user settings for threshold
+    settings = db.query(UserSettings).filter(UserSettings.user_id == port.owner_id).first()
+    threshold_pct = settings.risk_threshold_pct if settings else 0.10 # 10% default
+    
+    # Get latest metrics
+    latest_run = (
+        db.query(SimulationRun)
+        .filter(SimulationRun.portfolio_id == portfolio_id, SimulationRun.status == "completed")
+        .order_by(desc(SimulationRun.completed_at))
+        .first()
+    )
+    
+    if not latest_run:
+        return {"portfolio_id": portfolio_id, "alerts": []}
+
+    # Calculate portfolio total value to check % thresholds
+    total_nav = sum(pa.weight * (pa.asset.base_price if pa.asset else 0.0) * pa.quantity for pa in port.assets)
+    
+    alerts = []
+    for m in latest_run.risk_metrics:
+        # Check if VaR/ES exceeds % threshold of NAV
+        if "VaR" in m.metric_type or "ES" in m.metric_type:
+            pct_of_nav = m.metric_value / total_nav if total_nav > 0 else 0
+            if pct_of_nav > threshold_pct:
+                alerts.append({
+                    "metric": m.metric_type,
+                    "value": round(m.metric_value, 2),
+                    "threshold": round(total_nav * threshold_pct, 2),
+                    "breach_pct": round(pct_of_nav * 100, 2),
+                    "severity": "high" if pct_of_nav > threshold_pct * 1.5 else "medium",
+                    "timestamp": latest_run.completed_at.isoformat()
+                })
+                
+    return {
+        "portfolio_id": portfolio_id,
+        "total_nav": round(total_nav, 2),
+        "threshold_pct": round(threshold_pct * 100, 2),
+        "alerts": alerts
     }
 
 

@@ -9,5 +9,6 @@ class UserSettings(Base):
     default_iterations = Column(Integer, default=10000, nullable=False)
     default_horizon_days = Column(Integer, default=252, nullable=False)
     default_confidence_level = Column(Float, default=0.95, nullable=False)
+    risk_threshold_pct = Column(Float, default=0.10, nullable=False) # e.g. 10% VaR threshold
 
     user = relationship("User", backref="settings")
