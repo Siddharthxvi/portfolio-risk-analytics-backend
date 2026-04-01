@@ -57,6 +57,16 @@ def bootstrap_users(db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         return {"status": "error", "message": str(e)}
+        
+@app.get("/bootstrap-data")
+def bootstrap_data(db: Session = Depends(get_db)):
+    """Seeds the platform with assets, portfolios, scenarios, and mock simulation history."""
+    from scripts.bootstrap_data import bootstrap_full_data
+    try:
+        return bootstrap_full_data(db)
+    except Exception as e:
+        db.rollback()
+        return {"status": "error", "message": str(e)}
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):
