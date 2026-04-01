@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 ASSET_TYPES = [
     {"type_name": "equity", "description": "Common stocks and ETFs", "risk_category": "high"},
     {"type_name": "bond", "description": "Government and corporate bonds", "risk_category": "low"},
-    {"type_name": "derivative", "description": "Options and futures", "risk_category": "very_high"},
+    {"type_name": "derivative", "description": "Options and futures", "risk_category": "high"},
     {"type_name": "commodity", "description": "Gold, Oil, etc.", "risk_category": "medium"},
 ]
 
@@ -94,6 +94,27 @@ SCENARIOS = [
         "interest_rate_shock_bps": 200,
         "volatility_multiplier": 1.5,
         "equity_shock_pct": -0.15
+    },
+    {
+        "name": "COVID-19 Market Crash",
+        "description": "Global lockdown. Equities -25%, Vol 2.0x, Rates cut by 50bps.",
+        "interest_rate_shock_bps": -50,
+        "volatility_multiplier": 2.0,
+        "equity_shock_pct": -0.25
+    },
+    {
+        "name": "2008 Financial Crisis",
+        "description": "Lehman collapse. Equities -45%, Vol 3.0x, Rates cut by 150bps.",
+        "interest_rate_shock_bps": -150,
+        "volatility_multiplier": 3.0,
+        "equity_shock_pct": -0.45
+    },
+    {
+        "name": "Great Depression (1929)",
+        "description": "Systemic collapse. Equities -85%, Vol 4.0x, Deflationary rate shock.",
+        "interest_rate_shock_bps": -300,
+        "volatility_multiplier": 4.0,
+        "equity_shock_pct": -0.85
     }
 ]
 
