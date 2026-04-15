@@ -152,11 +152,22 @@ def create_run_simulation(
         random_seed=req.random_seed,
     )
     db.add(sim_run)
-    db.commit()
-    db.refresh(sim_run)
+    try:
+        db.commit()
+        db.refresh(sim_run)
+        
+        # Schedule background worker
+        background_tasks.add_task(execute_background_simulation, sim_run.run_id)
 
-    # Schedule background worker
-    background_tasks.add_task(execute_background_simulation, sim_run.run_id)
-
-    # Return immediately
-    return SimulationRunResponse.model_validate(sim_run)
+        # Return immediately
+        return SimulationRunResponse.model_validate(sim_run)
+    except IntegrityError as e:
+        db.rollback()
+        # Handle case where sim parameters violate DB CHECK constraints
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid simulation parameters: {str(e.orig)}"
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Unexpected failure: {str(e)}")

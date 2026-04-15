@@ -79,6 +79,15 @@ def sync_db(db: Session = Depends(get_db)):
         # Manually add columns to existing tables since create_all doesn't handle migrations
         db.execute(text("ALTER TABLE simulation_run ADD COLUMN IF NOT EXISTS histogram_data JSONB;"))
         db.execute(text("ALTER TABLE simulation_run ADD COLUMN IF NOT EXISTS run_type VARCHAR DEFAULT 'monte_carlo';"))
+        
+        # Relax constraints to match latest code (monte_carlo, historical, parametric)
+        db.execute(text("ALTER TABLE simulation_run DROP CONSTRAINT IF EXISTS simulation_run_run_type_check;"))
+        db.execute(text("ALTER TABLE simulation_run ADD CONSTRAINT simulation_run_run_type_check CHECK (run_type IN ('monte_carlo','historical','parametric'));"))
+        
+        # Ensure num_simulations limit is high enough in DB
+        db.execute(text("ALTER TABLE simulation_run DROP CONSTRAINT IF EXISTS simulation_run_num_simulations_check;"))
+        db.execute(text("ALTER TABLE simulation_run ADD CONSTRAINT simulation_run_num_simulations_check CHECK (num_simulations BETWEEN 1 AND 1000000);"))
+        
         db.execute(text("ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS risk_threshold_pct FLOAT DEFAULT 0.10;"))
         
         db.commit()

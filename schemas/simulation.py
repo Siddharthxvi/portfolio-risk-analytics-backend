@@ -13,7 +13,7 @@ class RiskMetricResponse(BaseModel):
 class SimulationRunCreate(BaseModel):
     portfolio_id: int
     scenario_id: int
-    num_simulations: Optional[int] = Field(default=None, ge=1, le=10000)
+    num_simulations: Optional[int] = Field(default=None, ge=1000, le=100000)
     time_horizon_days: Optional[int] = Field(default=None)
     random_seed: int = Field(default=42)
     simulation_type: Literal['monte_carlo', 'historical', 'parametric'] = 'monte_carlo'
@@ -71,7 +71,7 @@ class AssetInput(BaseModel):
     base_price: float = Field(gt=0, description="Reference price used in simulation")
     annual_volatility: float = Field(gt=0, description="Annualised standard deviation, e.g. 0.25 = 25%")
     annual_return: float = Field(description="Expected annualised return")
-    weight: float = Field(gt=0, le=1.0, description="Portfolio allocation fraction")
+    weight: Optional[float] = Field(None, gt=0, le=1.0, description="Portfolio allocation fraction")
     quantity: float = Field(gt=0, description="Number of units held")
 
 class ScenarioInput(BaseModel):
@@ -95,12 +95,40 @@ class AdHocSimulationRequest(BaseModel):
             raise ValueError("time_horizon_days must be between 1 and 252 (inclusive).")
         return v
 
-    @field_validator('portfolio_assets')
+    @field_validator('portfolio_assets', mode='before')
     @classmethod
-    def validate_weights(cls, assets: List[AssetInput]) -> List[AssetInput]:
-        total_weight = sum(a.weight for a in assets)
+    def resolve_and_validate_assets(cls, assets: Any) -> Any:
+        if not isinstance(assets, list):
+            return assets
+            
+        total_value = 0.0
+        for a in assets:
+            price = a.get('base_price')
+            qty = a.get('quantity')
+            if price and qty:
+                total_value += float(price) * float(qty)
+        
+        if total_value <= 0:
+             return assets # let field-level ge=0 catch it
+
+        for a in assets:
+            price = a.get('base_price')
+            qty = a.get('quantity')
+            weight = a.get('weight')
+            
+            if price and qty:
+                calculated_weight = (float(price) * float(qty)) / total_value
+                if weight is None:
+                    a['weight'] = calculated_weight
+                else:
+                    if abs(float(weight) - calculated_weight) > 0.001:
+                        raise ValueError(f"Weight consistency error. Provided: {weight}, Calculated: {calculated_weight:.4f}")
+        
+        # Final sum check
+        total_weight = sum(float(a.get('weight', 0)) for a in assets)
         if abs(total_weight - 1.0) > 0.001:
-            raise ValueError(f"Portfolio weights must sum to 1.0. Found: {total_weight:.4f}")
+            raise ValueError(f"Total weights must sum to 1.0. Got: {total_weight:.4f}")
+            
         return assets
 
 
