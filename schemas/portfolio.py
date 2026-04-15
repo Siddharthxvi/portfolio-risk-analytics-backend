@@ -4,7 +4,7 @@ from .asset import AssetResponse
 
 class PortfolioAssetBase(BaseModel):
     asset_id: int
-    weight: float = Field(..., gt=0, le=1.0)
+    weight: Optional[float] = Field(None, gt=0, le=1.0)
     quantity: float = Field(..., gt=0)
 
 class PortfolioAssetCreate(PortfolioAssetBase):
