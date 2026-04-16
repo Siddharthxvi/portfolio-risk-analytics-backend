@@ -14,13 +14,26 @@ WriteAccess = Depends(require_role("ADMIN", "ANALYST"))
 
 import yfinance as yf
 import numpy as np
+import time
+
+# Simple in-memory cache to avoid hitting Yahoo Finance rate limits
+# {ticker: {"data": dict, "expiry": timestamp}}
+TICKER_CACHE = {}
+CACHE_TTL = 3600 # 1 hour
 
 @router.get("/fetch-data/{ticker}")
 def fetch_asset_data(ticker: str):
     """
     Fetch asset metadata and calculate risk metrics from Yahoo Finance.
     Public endpoint to assist in asset creation.
+    Includes a 1-hour in-memory cache to mitigate rate limits.
     """
+    ticker = ticker.upper()
+    now = time.time()
+    
+    if ticker in TICKER_CACHE and now < TICKER_CACHE[ticker]["expiry"]:
+        return TICKER_CACHE[ticker]["data"]
+
     try:
         tick = yf.Ticker(ticker)
         info = tick.info
@@ -51,7 +64,7 @@ def fetch_asset_data(ticker: str):
         asset_name = info.get('longName') or info.get('shortName') or ticker.upper()
         currency = info.get('currency', 'USD')
         
-        return {
+        res = {
             "ticker": ticker.upper(),
             "asset_name": asset_name,
             "currency": currency,
@@ -63,9 +76,19 @@ def fetch_asset_data(ticker: str):
             "annual_return": round(float(annual_return), 4),
             "type_name": "equity"  # Default type for Yahoo Finance fetches
         }
+        
+        # Cache the successful result
+        TICKER_CACHE[ticker] = {"data": res, "expiry": time.time() + CACHE_TTL}
+        return res
+
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
+        
+        err_msg = str(e).lower()
+        if "too many requests" in err_msg or "429" in err_msg:
+            raise HTTPException(status_code=429, detail="Yahoo Finance rate limit reached. Please try again later or use the cache.")
+            
         raise HTTPException(status_code=400, detail=f"Failed to fetch data: {str(e)}")
 
 
