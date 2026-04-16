@@ -79,13 +79,17 @@ def get_dashboard_summary(portfolio_id: int, db: Session = Depends(get_db)):
     # ── 3. Holdings + Marginal Risk Contribution ─────────────────────────────
     holdings = []
     has_run_data = latest_run and latest_metrics
+    portfolio_value = 0.0
 
     for pa in port.assets:
         asset = pa.asset
         asset_name = asset.asset_name if asset else f"Asset #{pa.asset_id}"
         ticker = asset.ticker if asset else "N/A"
         base_price = asset.base_price if asset else 0.0
-        position_value = pa.weight * base_price * pa.quantity
+        
+        # Absolute dollar position value: Price * Quantity
+        pos_val = base_price * pa.quantity
+        portfolio_value += pos_val
 
         marginal_var = None
         if has_run_data and asset and latest_run:
@@ -110,8 +114,9 @@ def get_dashboard_summary(portfolio_id: int, db: Session = Depends(get_db)):
                     time_horizon_days=latest_run.time_horizon_days,
                     random_seed=latest_run.random_seed,
                 )
-                m = compute_metrics(pnl, 0.95, 1000)
-                marginal_var = round(pa.weight * m.get("VaR_95", 0.0), 4)
+                # For marginal VaR, we use the position's absolute VaR
+                m = compute_metrics(pnl, 0.95, 1000, pos_val)
+                marginal_var = round(m.get("VaR_95", 0.0), 4)
             except Exception:
                 marginal_var = None
 
@@ -119,10 +124,10 @@ def get_dashboard_summary(portfolio_id: int, db: Session = Depends(get_db)):
             "asset_id": pa.asset_id,
             "asset_name": asset_name,
             "ticker": ticker,
-            "weight": round(pa.weight, 4),
+            "weight": round(pa.weight, 4), # Keep for display info
             "quantity": pa.quantity,
             "base_price": base_price,
-            "position_value": round(position_value, 2),
+            "position_value": round(pos_val, 2),
             "marginal_var_95": marginal_var,
         })
 
@@ -141,6 +146,7 @@ def get_dashboard_summary(portfolio_id: int, db: Session = Depends(get_db)):
     return {
         "portfolio_id": portfolio_id,
         "portfolio_name": port.name,
+        "portfolio_value": round(portfolio_value, 2),
         "base_currency": port.base_currency,
         "status": port.status,
         "is_simulation_running": is_simulation_running,
@@ -181,7 +187,7 @@ def get_risk_alerts(portfolio_id: int, db: Session = Depends(get_db)):
         return {"portfolio_id": portfolio_id, "alerts": []}
 
     # Calculate portfolio total value to check % thresholds
-    total_nav = sum(pa.weight * (pa.asset.base_price if pa.asset else 0.0) * pa.quantity for pa in port.assets)
+    total_nav = sum((pa.asset.base_price if pa.asset else 0.0) * pa.quantity for pa in port.assets)
     
     alerts = []
     for m in latest_run.risk_metrics:
@@ -240,7 +246,7 @@ def get_nav_history(
 
     # Baseline NAV from current holdings
     baseline_nav = sum(
-        pa.weight * (pa.asset.base_price if pa.asset else 0.0) * pa.quantity
+        (pa.asset.base_price if pa.asset else 0.0) * pa.quantity
         for pa in port.assets
     )
 

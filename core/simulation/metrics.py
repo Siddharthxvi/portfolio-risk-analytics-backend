@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Dict, Any, Tuple
 
-def compute_metrics(pnl: np.ndarray, confidence_level: float, num_iterations: int) -> Dict[str, float]:
+def compute_metrics(pnl: np.ndarray, confidence_level: float, num_iterations: int, portfolio_value: float = 0.0) -> Dict[str, float]:
     """Derive strict quantitative metrics from P&L array."""
     tail_pct = 1.0 - confidence_level
     pnl_sorted = np.sort(pnl)
@@ -9,15 +9,16 @@ def compute_metrics(pnl: np.ndarray, confidence_level: float, num_iterations: in
     idx_tail = max(1, int(num_iterations * tail_pct))
     idx_99 = max(1, int(num_iterations * 0.01))
 
-    # Calculate base risk measures
+    # Calculate base risk measures (Absolute Dollars)
     var_cl = float(-pnl_sorted[idx_tail])
     var_99 = float(-pnl_sorted[idx_99])
     
     # Expected Shortfall: mean of losses that exceed VaR
     es_cl = float(-np.mean(pnl_sorted[:idx_tail]))
 
-    total_value = float(np.sum(np.abs(pnl)) / num_iterations)
-    volatility = float(np.std(pnl) / total_value) if total_value > 0 else 0.0
+    # Volatility as a decimal (e.g. 0.15 for 15%)
+    # std(dollar_pnl) / portfolio_nav gives return volatility
+    volatility = float(np.std(pnl) / portfolio_value) if portfolio_value > 0 else 0.0
     max_drawdown = float(-pnl.min())
 
     # Constraints per DB triggers

@@ -26,7 +26,8 @@ def run_gbm(assets: List[Dict], scenario: Dict, num_iterations: int, time_horizo
         mu_horizon = (eff_ret / 252.0) * time_horizon_days
         sigma_horizon = (eff_vol / np.sqrt(252.0)) * np.sqrt(time_horizon_days)
 
-        asset_values[j] = asset['weight'] * asset['base_price'] * asset['quantity']
+        # Asset value is Price * Quantity (Weight is redundant for absolute P&L)
+        asset_values[j] = asset['base_price'] * asset['quantity']
         asset_returns[j] = np.random.normal(mu_horizon, sigma_horizon, num_iterations)
 
     return np.dot(asset_values, asset_returns)
@@ -45,7 +46,7 @@ def run_historical_bootstrap(assets: List[Dict], scenario: Dict, num_iterations:
         daily_draws = rng.normal(daily_mu, daily_sigma, (num_iterations, time_horizon_days))
         path_returns = daily_draws.sum(axis=1)
 
-        position_value = asset['weight'] * asset['base_price'] * asset['quantity']
+        position_value = asset['base_price'] * asset['quantity']
         pnl += position_value * path_returns
 
     return pnl
@@ -57,7 +58,7 @@ def run_parametric(assets: List[Dict], scenario: Dict, num_iterations: int, time
 
     for asset in assets:
         eff_vol, eff_ret = _apply_shocks(asset, scenario)
-        pos_value = asset['weight'] * asset['base_price'] * asset['quantity']
+        pos_value = asset['base_price'] * asset['quantity']
 
         mu_h = (eff_ret / 252.0) * time_horizon_days
         sigma_h = (eff_vol / np.sqrt(252.0)) * np.sqrt(time_horizon_days)

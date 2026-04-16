@@ -49,10 +49,12 @@ def run_adhoc_simulation(
     validate_portfolio(assets)
     validate_scenario(scenario)
 
+    portfolio_value = sum(float(a['base_price']) * float(a['quantity']) for a in assets)
+
     engine_func = ENGINES.get(simulation_type, ENGINES['monte_carlo'])
     pnl = engine_func(assets, scenario, num_iterations, time_horizon_days, random_seed)
     
-    metrics = compute_metrics(pnl, confidence_level, num_iterations)
+    metrics = compute_metrics(pnl, confidence_level, num_iterations, portfolio_value)
     histogram = build_histogram(pnl, num_bins=60)
     
     logger.info("Ad-hoc simulation complete.")
@@ -83,6 +85,8 @@ def execute_background_simulation(run_id: int):
         validate_portfolio(assets_payload)
         validate_scenario(scenario_payload)
 
+        portfolio_value = sum(pa.quantity * (pa.asset.base_price if pa.asset else 0.0) for pa in port.assets)
+
         # Dispatch
         engine_func = ENGINES.get(sim_run.run_type, ENGINES['monte_carlo'])
         pnl = engine_func(
@@ -94,7 +98,7 @@ def execute_background_simulation(run_id: int):
         )
 
         # We assume 0.95 confidence level if not explicitly defined on model, using default param
-        metrics = compute_metrics(pnl, 0.95, sim_run.num_simulations)
+        metrics = compute_metrics(pnl, 0.95, sim_run.num_simulations, portfolio_value)
         histogram = build_histogram(pnl, num_bins=60)
 
         # Persist results atomically
