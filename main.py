@@ -1,8 +1,44 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.router import api_router
+import time
+from collections import defaultdict
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 app = FastAPI(title="Portfolio Risk Analytics API")
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    # Simple in-memory rate limiter: {user_key: [timestamps]}
+    def __init__(self, app, requests_per_minute: int = 15):
+        super().__init__(app)
+        self.limit = requests_per_minute
+        self.history = defaultdict(list)
+
+    async def dispatch(self, request, call_next):
+        # We only rate-limit the heavy polling endpoints
+        path = request.url.path
+        if not (path.startswith("/dashboard") or path.startswith("/simulation-runs")):
+            return await call_next(request)
+
+        # Unique key: Authorization header (token) or fallback to Client IP
+        user_key = request.headers.get("authorization", request.client.host)
+        now = time.time()
+        
+        # Prune history (keep only last 60 seconds)
+        self.history[user_key] = [t for t in self.history[user_key] if now - t < 60]
+
+        if len(self.history[user_key]) >= self.limit:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Limit is 15 per minute per user."}
+            )
+
+        self.history[user_key].append(now)
+        return await call_next(request)
+
+# Rate limiting must come before other middlewares
+app.add_middleware(RateLimitMiddleware, requests_per_minute=15)
 
 app.add_middleware(
     CORSMiddleware,

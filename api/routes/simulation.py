@@ -16,6 +16,7 @@ from schemas.simulation import (
     AdHocSimulationResponse, 
     HistogramResponse
 )
+from sqlalchemy.exc import IntegrityError
 from services.simulation_service import run_adhoc_simulation, execute_background_simulation
 
 router = APIRouter()
